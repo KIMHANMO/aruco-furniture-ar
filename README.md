@@ -2,6 +2,24 @@
 
 카메라에 마커를 비추면 3D 가구가 나타나고, 마우스나 키보드로 빙글빙글 돌려 볼 수 있어요.
 
+## 설치 없이 바로 실행하기 (Windows 64비트)
+
+1. [ArUcoFurnitureAR-win64.zip](https://github.com/KIMHANMO/aruco-furniture-ar/raw/download/ArUcoFurnitureAR-win64.zip)을 내려받아 **압축을 모두 풀어요**.
+2. `A4_markers.pdf`를 실제 크기(100%)로 인쇄해요.
+3. 노트북 카메라는 `run_laptop_camera.bat`, 핸드폰 카메라는 `run_phone_camera.bat`을 두 번 눌러요.
+4. 3D 가구 파일은 `content/models` 폴더에 넣어요. 없으면 색깔 상자가 나와요.
+
+- Windows가 처음 보는 프로그램이라고 막을 수 있어요. 어른과 함께 출처를 확인하고 실행해요.
+- `f` 키로 잰 카메라 값은 프로그램을 끄면 사라져요. 켤 때마다 다시 재요.
+- 가구 길이(`850.f` 등), `markerMm`, `focalRatio`를 바꾸려면 아래처럼 직접 빌드해야 해요.
+
+## 코드를 고쳐서 빌드하기
+
+1. Visual Studio 2026에 'C++를 사용한 데스크톱 개발'(v145 도구)을 설치해요.
+2. OpenCV **5.0.0** Windows용을 `C:\opencv`에 풀어요. `C:\opencvuild\include` 폴더가 보이면 맞아요.
+3. 환경 변수 PATH에 `C:\opencvuilddc16in`을 추가하고 Visual Studio를 다시 켜요.
+4. `ArUco car.slnx`를 열고 **Release / x64**로 빌드해요.
+
 ## 무엇이 달라졌나요?
 
 예전에는 마커 위에 **납작한 자동차 그림**을 붙였어요. 이제는 마커 위에 **입체 가구**가 서 있어요.
