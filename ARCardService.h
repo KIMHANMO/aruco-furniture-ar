@@ -3,6 +3,7 @@
 #include "CameraManager.h"
 #include "ContentManager.h"
 #include "MarkerDetector.h"
+#include "Settings.h"
 #include "UIManager.h"
 #include <map>
 #include <string>
@@ -15,8 +16,9 @@ struct AppConfig {
     int height = 720;
     std::string contentDir = "content";
     std::string captureDir = "captures";
+    std::string settingsFile = "settings.txt";   // 여기 적힌 값이 아래 기본값보다 먼저다
     float overlayScale = 1.0f;
-    float focalRatio = 0.9f;      // 초점거리/화면 너비. 'f' 키로 잰 값을 여기에 적어 둔다
+    float focalRatio = 0.9f;      // 초점거리/화면 너비. 'f' 키로 재면 설정 파일에 저장된다
     float markerMm = 180.f;       // 인쇄한 마커의 검은 테두리 한 변을 자로 잰 길이
     float calibrationMm = 1000.f; // 'f' 키를 누를 때 카메라와 마커 사이의 거리
 };

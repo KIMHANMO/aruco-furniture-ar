@@ -14,7 +14,10 @@ ARCardService::ARCardService(const AppConfig& cfg)
     : cfg_(cfg), overlay_(cfg.overlayScale, cfg.focalRatio) {}
 
 bool ARCardService::initialize() {
-    contents_.load(cfg_.contentDir);   // 모델이 없어도 상자로 계속 진행
+    const Settings settings = loadSettings(cfg_.settingsFile);
+    cfg_.markerMm = settingOr(settings, "markerMm", cfg_.markerMm, 10.f, 2000.f);
+    overlay_.setFocalRatio(settingOr(settings, "focalRatio", cfg_.focalRatio, 0.4f, 2.5f));
+    contents_.load(cfg_.contentDir, settings);   // 모델이 없어도 상자로 계속 진행
     if (!camera_.open(cfg_.cameraIndex, cfg_.width, cfg_.height)) return false;
     return true;
 }
@@ -79,8 +82,9 @@ void ARCardService::calibrateFocal(const cv::Mat& frame) {
         std::snprintf(msg, sizeof(msg), "Show ONE marker, facing camera, at %.0f mm", cfg_.calibrationMm);
     } else {
         overlay_.setFocalRatio(ratio);
-        std::snprintf(msg, sizeof(msg), "focalRatio = %.3f", ratio);
-        std::cout << "[ARCardService] " << msg << "  (write this in ARCardService.h to keep it)\n";
+        const bool saved = saveSetting(cfg_.settingsFile, "focalRatio", ratio);
+        std::snprintf(msg, sizeof(msg), "focalRatio = %.3f (%s)", ratio, saved ? "saved" : "NOT saved");
+        std::cout << "[ARCardService] " << msg << "\n";
     }
     ui_.showMessage(msg);
 }

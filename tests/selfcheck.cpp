@@ -2,6 +2,7 @@
 // 인자: 임시 폴더 — 점검용 모델과 결과 그림을 여기에 쓴다
 #include "../AROverlay.h"
 #include "../MarkerDetector.h"
+#include "../Settings.h"
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #if CV_VERSION_MAJOR >= 5
@@ -12,6 +13,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 
 #define CHECK(x) do { if (!(x)) { std::cerr << "FAIL line " << __LINE__ << ": " #x "\n"; return 1; } } while (0)
 
@@ -35,6 +37,20 @@ int main(int argc, char** argv) {
     CHECK(m.triangles[2].texture == -1 && m.triangles[2].color == cv::Vec3f(0, 255, 0));
     CHECK(m.triangles[2].v[2] == cv::Point3f(0, 0, 1));         // y가 위 → z가 위, 가장 긴 변 = 1
     CHECK(Mesh::loadObj(dir + "none.obj").triangles.empty());
+
+    // 설정 파일: BOM, 설명, 잘못된 값, 저장할 때 다른 줄 보존
+    const std::string cfg = dir + "settings.txt";
+    std::ofstream(cfg) << "\xEF\xBB\xBF" << "chair = 900 # mine\n# note = 5\n sofa=abc\nbed = -3\nfocalRatio = 0.9 # cam\n";
+    Settings s = loadSettings(cfg);
+    CHECK(settingOr(s, "chair", 1, 10, 20000) == 900 && !s.count("note") && !s.count("# note"));
+    CHECK(settingOr(s, "sofa", 7, 10, 20000) == 7 && settingOr(s, "bed", 8, 10, 20000) == 8);
+    CHECK(settingOr(s, "table", 9, 10, 20000) == 9 && loadSettings(dir + "none.txt").empty());
+    CHECK(saveSetting(cfg, "focalRatio", 0.75f) && saveSetting(cfg, "markerMm", 175.f));
+    s = loadSettings(cfg);
+    CHECK(s["focalRatio"] == 0.75f && s["markerMm"] == 175.f && s["chair"] == 900);
+    std::ifstream saved(cfg);
+    const std::string text((std::istreambuf_iterator<char>(saved)), {});
+    CHECK(text.find("# mine") != std::string::npos && text.find("# note = 5") != std::string::npos && text.find("# cam") != std::string::npos);
 
     // 2) 기울어진 가짜 카메라 화면에서 마커 검출 → 합성
     cv::Mat marker, frame(720, 1280, CV_8UC3, cv::Scalar(200, 200, 200));

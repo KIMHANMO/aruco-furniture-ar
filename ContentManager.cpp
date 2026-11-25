@@ -2,7 +2,7 @@
 #include <iostream>
 
 // 카드(가구) 데이터 등록 — 가구를 추가하려면 여기에 한 줄 추가 + content/models/ 에 OBJ 추가
-// 파일 이름 다음 숫자 = 실제 가구의 가장 긴 변(mm). 가져온 가구에 맞게 바꾼다. 나머지 정보는 예시값
+// 파일 이름 다음 숫자 = 가장 긴 변(mm) 기본값. settings.txt 에 적은 길이가 먼저다. 나머지 정보는 예시값
 void ContentManager::registerDefaults() {
     contents_.clear();
     contents_[0] = { 0, "CHAIR", "chair.obj", 850.f,
@@ -19,7 +19,7 @@ void ContentManager::registerDefaults() {
         cv::Scalar(30, 150, 230), Mesh() };
 }
 
-bool ContentManager::load(const std::string& contentDir) {
+bool ContentManager::load(const std::string& contentDir, const Settings& settings) {
     registerDefaults();
     std::string dir = contentDir;
     if (!dir.empty() && dir.back() != '/' && dir.back() != '\\') dir += '/';
@@ -27,6 +27,7 @@ bool ContentManager::load(const std::string& contentDir) {
 
     bool allLoaded = true;
     for (auto& [id, c] : contents_) {
+        c.longestMm = settingOr(settings, c.modelFile.substr(0, c.modelFile.find('.')), c.longestMm, 10.f, 20000.f);
         c.mesh = Mesh::loadObj(dir + c.modelFile);
         if (c.mesh.triangles.empty()) {
             std::cerr << "[ContentManager] Cannot load model: " << dir + c.modelFile

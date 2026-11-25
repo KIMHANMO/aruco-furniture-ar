@@ -1,5 +1,6 @@
 #pragma once
 #include "Mesh.h"
+#include "Settings.h"
 #include <opencv2/core.hpp>
 #include <map>
 #include <string>
@@ -20,7 +21,7 @@ struct CardContent {
 // 마커 ID -> 콘텐츠 관리
 class ContentManager {
 public:
-    bool load(const std::string& contentDir);   // 3D 모델 로드 (없으면 상자로 대체)
+    bool load(const std::string& contentDir, const Settings& settings);   // 3D 모델 로드 (없으면 상자로 대체)
     const CardContent* find(int id) const;
     size_t size() const { return contents_.size(); }
 
