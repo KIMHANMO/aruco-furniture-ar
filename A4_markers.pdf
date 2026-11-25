@@ -12,7 +12,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595.276 841.890] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
 endobj
 5 0 obj
-<< /Length 665 >>
+<< /Length 662 >>
 stream
 0 g
 42.520 218.268 510.236 510.236 re f
@@ -26,7 +26,7 @@ stream
 382.677 388.346 85.039 85.039 re f
 297.638 303.307 85.039 85.039 re f
 0 g
-BT /F1 20 Tf 42.52 785.20 Td (ID 0  CHAIR) Tj ET
+BT /F1 20 Tf 42.52 785.20 Td (MARKER 1) Tj ET
 BT /F1 12 Tf 42.52 141.73 Td (Print at 100% \(Actual size\), A4. Black square = 180 mm.) Tj ET
 BT /F1 12 Tf 42.52 121.89 Td (Check with a ruler: the line below must be exactly 100 mm.) Tj ET
 1 w 42.52 90.71 m 325.98 90.71 l S
@@ -38,7 +38,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595.276 841.890] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
 endobj
 7 0 obj
-<< /Length 665 >>
+<< /Length 662 >>
 stream
 0 g
 42.520 218.268 510.236 510.236 re f
@@ -52,7 +52,7 @@ stream
 127.559 303.307 85.039 85.039 re f
 297.638 303.307 85.039 85.039 re f
 0 g
-BT /F1 20 Tf 42.52 785.20 Td (ID 1  TABLE) Tj ET
+BT /F1 20 Tf 42.52 785.20 Td (MARKER 2) Tj ET
 BT /F1 12 Tf 42.52 141.73 Td (Print at 100% \(Actual size\), A4. Black square = 180 mm.) Tj ET
 BT /F1 12 Tf 42.52 121.89 Td (Check with a ruler: the line below must be exactly 100 mm.) Tj ET
 1 w 42.52 90.71 m 325.98 90.71 l S
@@ -64,7 +64,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595.276 841.890] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
 endobj
 9 0 obj
-<< /Length 664 >>
+<< /Length 662 >>
 stream
 0 g
 42.520 218.268 510.236 510.236 re f
@@ -78,7 +78,7 @@ stream
 212.598 303.307 85.039 85.039 re f
 382.677 303.307 85.039 85.039 re f
 0 g
-BT /F1 20 Tf 42.52 785.20 Td (ID 2  SOFA) Tj ET
+BT /F1 20 Tf 42.52 785.20 Td (MARKER 3) Tj ET
 BT /F1 12 Tf 42.52 141.73 Td (Print at 100% \(Actual size\), A4. Black square = 180 mm.) Tj ET
 BT /F1 12 Tf 42.52 121.89 Td (Check with a ruler: the line below must be exactly 100 mm.) Tj ET
 1 w 42.52 90.71 m 325.98 90.71 l S
@@ -90,7 +90,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595.276 841.890] /Resources << /Font << /F1 3 0 R >> >> /Contents 11 0 R >>
 endobj
 11 0 obj
-<< /Length 628 >>
+<< /Length 627 >>
 stream
 0 g
 42.520 218.268 510.236 510.236 re f
@@ -103,7 +103,7 @@ stream
 212.598 303.307 85.039 85.039 re f
 297.638 303.307 85.039 85.039 re f
 0 g
-BT /F1 20 Tf 42.52 785.20 Td (ID 3  BED) Tj ET
+BT /F1 20 Tf 42.52 785.20 Td (MARKER 4) Tj ET
 BT /F1 12 Tf 42.52 141.73 Td (Print at 100% \(Actual size\), A4. Black square = 180 mm.) Tj ET
 BT /F1 12 Tf 42.52 121.89 Td (Check with a ruler: the line below must be exactly 100 mm.) Tj ET
 1 w 42.52 90.71 m 325.98 90.71 l S
@@ -119,13 +119,13 @@ xref
 0000000134 00000 n 
 0000000204 00000 n 
 0000000338 00000 n 
-0000001053 00000 n 
-0000001187 00000 n 
-0000001902 00000 n 
-0000002036 00000 n 
-0000002750 00000 n 
-0000002886 00000 n 
+0000001050 00000 n 
+0000001184 00000 n 
+0000001896 00000 n 
+0000002030 00000 n 
+0000002742 00000 n 
+0000002878 00000 n 
 trailer << /Size 12 /Root 1 0 R >>
 startxref
-3565
+3556
 %%EOF

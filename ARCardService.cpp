@@ -26,29 +26,42 @@ void ARCardService::processFrame(cv::Mat& frame) {
     // 1) 마커 인식
     std::vector<MarkerInfo> markers = detector_.detect(frame);
 
-    // 2) 콘텐츠 검색 (등록되지 않은 ID는 무시)
+    // 2) 마커마다 사용자가 고른 가구 찾기 (사용하지 않는 ID는 무시)
     cards_.clear();
-    for (const auto& m : markers)
-        if (const CardContent* c = contents_.find(m.id())) cards_.emplace_back(m, c);
+    for (const auto& m : markers) {
+        if (m.id() >= cfg_.markerCount) continue;
+        // 처음 보는 마커는 바로 선택해서 가구를 고를 수 있게
+        if (chosen_.try_emplace(m.id(), 0).second) selectedId_ = m.id();
+        const int number = chosen_[m.id()];
+        cards_.emplace_back(m, number > 0 ? &contents_.all()[number - 1] : nullptr);
+    }
 
     // ID 순으로 정렬해서 패널 순서가 흔들리지 않게
     std::sort(cards_.begin(), cards_.end(),
-              [](const auto& a, const auto& b) { return a.second->id < b.second->id; });
+              [](const auto& a, const auto& b) { return a.first.id() < b.first.id(); });
 
-    // 선택한 가구가 화면에서 사라졌으면 보이는 첫 번째 가구를 선택
+    // 선택한 마커가 화면에서 사라졌으면 보이는 첫 번째 마커를 선택
     const bool selectedVisible = std::any_of(cards_.begin(), cards_.end(),
-        [this](const auto& card) { return card.second->id == selectedId_; });
-    if (!selectedVisible && !cards_.empty()) selectedId_ = cards_.front().second->id;
+        [this](const auto& card) { return card.first.id() == selectedId_; });
+    if (!selectedVisible && !cards_.empty()) selectedId_ = cards_.front().first.id();
 
     // 3) AR 합성
     std::vector<AROverlay::Item> items;
-    for (const auto& [m, c] : cards_) items.push_back({ m, &c->mesh, rotations_[c->id], c->longestMm / cfg_.markerMm });
+    for (const auto& [m, c] : cards_)
+        if (c) items.push_back({ m, &c->mesh, rotations_[m.id()], c->longestMm / cfg_.markerMm });
     overlay_.draw(frame, items);
 
     if (ui_.showDebug) detector_.drawDebug(frame);
 
     // 4) 정보 표시
-    ui_.drawOverlayInfo(frame, cards_, selectedId_, overlay_.scale(), fps_);
+    ui_.drawOverlayInfo(frame, cards_, contents_.all(), selectedId_, overlay_.scale(), fps_);
+}
+
+// 선택한 마커 위에 number번 가구를 띄운다 (0 = 치우기)
+void ARCardService::chooseFurniture(int number) {
+    if (cards_.empty() || number > (int)contents_.all().size()) return;
+    chosen_[selectedId_] = number;
+    rotations_.erase(selectedId_);   // 새 가구는 처음 방향으로
 }
 
 void ARCardService::rotateSelected(float yaw, float pitch) {
@@ -58,7 +71,7 @@ void ARCardService::rotateSelected(float yaw, float pitch) {
     r.pitch += pitch;
 }
 
-// 누른 곳에서 가장 가까운 가구를 선택하고, 끌면 돌린다
+// 누른 곳에서 가장 가까운 마커를 선택하고, 끌면 그 위의 가구를 돌린다
 void ARCardService::handleMouse() {
     const MouseDrag drag = ui_.takeDrag();
     if (drag.pressed && !cards_.empty()) {
@@ -67,7 +80,7 @@ void ARCardService::handleMouse() {
             return d.dot(d);
         };
         selectedId_ = std::min_element(cards_.begin(), cards_.end(),
-            [&](const auto& a, const auto& b) { return dist(a) < dist(b); })->second->id;
+            [&](const auto& a, const auto& b) { return dist(a) < dist(b); })->first.id();
     }
     const float radPerPixel = 0.01f;
     rotateSelected(drag.delta.x * radPerPixel, drag.delta.y * radPerPixel);
@@ -113,6 +126,10 @@ void ARCardService::saveCapture(const cv::Mat& frame) {
 }
 
 bool ARCardService::handleAction(UIAction action, const cv::Mat& frame) {
+    if (action >= UIAction::Furniture0 && action <= UIAction::Furniture9) {
+        chooseFurniture((int)action - (int)UIAction::Furniture0);
+        return true;
+    }
     const float step = 0.1f;   // 방향키 한 번에 약 6도
     switch (action) {
     case UIAction::Quit:        return false;

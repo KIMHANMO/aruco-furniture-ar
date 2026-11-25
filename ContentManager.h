@@ -2,14 +2,12 @@
 #include "Mesh.h"
 #include "Settings.h"
 #include <opencv2/core.hpp>
-#include <map>
 #include <string>
 #include <utility>
 #include <vector>
 
-// 마커 ID에 대응하는 카드 콘텐츠 (가구)
+// 마커 위에 띄울 수 있는 가구 1개
 struct CardContent {
-    int id = -1;
     std::string name;      // 화면 표시용 이름 (cv::putText는 한글 미지원 → 영문)
     std::string modelFile; // 3D 모델 파일명 (content/models 안의 .obj)
     float longestMm;       // 실제 가구의 가장 긴 변 (mm)
@@ -18,14 +16,13 @@ struct CardContent {
     Mesh mesh;
 };
 
-// 마커 ID -> 콘텐츠 관리
+// 가구 목록 관리. 어느 마커에 무엇을 띄울지는 사용자가 실행 중에 고른다
 class ContentManager {
 public:
     bool load(const std::string& contentDir, const Settings& settings);   // 3D 모델 로드 (없으면 상자로 대체)
-    const CardContent* find(int id) const;
-    size_t size() const { return contents_.size(); }
+    const std::vector<CardContent>& all() const { return contents_; }
 
 private:
     void registerDefaults();
-    std::map<int, CardContent> contents_;
+    std::vector<CardContent> contents_;   // 순서 = 화면의 숫자 키 순서 (첫 번째가 1번 키)
 };

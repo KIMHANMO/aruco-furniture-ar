@@ -23,15 +23,15 @@ UIManager::~UIManager() {
     if (windowCreated_) cv::destroyWindow(window_);
 }
 
-void UIManager::drawLabel(cv::Mat& frame, const MarkerInfo& m, const CardContent& c, bool selected) const {
-    std::string text = (selected ? "> " : "") + c.name + "  (ID " + std::to_string(c.id) + ")";
+void UIManager::drawLabel(cv::Mat& frame, const MarkerInfo& m, const CardContent* c, bool selected) const {
+    const std::string text = (selected ? "> Marker " : "Marker ") + std::to_string(m.id() + 1) + ": " + (c ? c->name : "empty");
     int base = 0;
     cv::Size ts = cv::getTextSize(text, FONT, 0.6, 2, &base);
     cv::Rect br = m.boundingRect();
     cv::Point org(br.x + br.width / 2 - ts.width / 2, br.y + br.height + ts.height + 12);   // 가구는 위로 솟으므로 마커 아래에 표시
-    if (org.y + base > frame.rows - 30) org.y = br.y - 12;   // 아래 도움말과 겹치면 위쪽에 표시
+    if (org.y + base > frame.rows - 70) org.y = br.y - 12;   // 아래 메뉴와 겹치면 위쪽에 표시
     cv::rectangle(frame, { org.x - 6, org.y - ts.height - 6, ts.width + 12, ts.height + base + 10 },
-                  c.color, cv::FILLED);
+                  c ? c->color : cv::Scalar(90, 90, 90), cv::FILLED);
     cv::putText(frame, text, org, FONT, 0.6, WHITE, 2, cv::LINE_AA);
     if (m.lostFrames > 0)   // 잠깐 놓친 마커는 점선 느낌으로 표시
         cv::circle(frame, m.center(), 6, GRAY, 2);
@@ -41,14 +41,16 @@ void UIManager::drawSpecPanel(cv::Mat& frame,
                               const std::vector<std::pair<MarkerInfo, const CardContent*>>& cards) const {
     const int w = 300, lineH = 22, x = frame.cols - w - 10;
     int h = 10;
-    for (const auto& [m, c] : cards) h += 34 + (int)c->specs.size() * lineH + 10;
-    if (cards.empty()) return;
+    for (const auto& [m, c] : cards)
+        if (c) h += 34 + (int)c->specs.size() * lineH + 10;
+    if (h == 10) return;   // 띄운 가구가 없음
     shadeRect(frame, { x, 50, w, h });
 
     int y = 50 + 30;
     for (const auto& [m, c] : cards) {
+        if (!c) continue;
         cv::rectangle(frame, { x + 10, y - 18, 8, 22 }, c->color, cv::FILLED);
-        cv::putText(frame, c->name, { x + 26, y }, FONT, 0.65, WHITE, 2, cv::LINE_AA);
+        cv::putText(frame, std::to_string(m.id() + 1) + ". " + c->name, { x + 26, y }, FONT, 0.65, WHITE, 2, cv::LINE_AA);
         y += 26;
         for (const auto& [k, v] : c->specs) {
             cv::putText(frame, k, { x + 26, y }, FONT, 0.45, GRAY, 1, cv::LINE_AA);
@@ -61,12 +63,12 @@ void UIManager::drawSpecPanel(cv::Mat& frame,
 
 void UIManager::drawOverlayInfo(cv::Mat& frame,
                                 const std::vector<std::pair<MarkerInfo, const CardContent*>>& cards,
-                                int selectedId, float scale, double fps) const {
-    // 상단 상태바: 인식된 카드 수 + ID 목록 + FPS
+                                const std::vector<CardContent>& furniture, int selectedId, float scale, double fps) const {
+    // 상단 상태바: 인식된 마커 번호 + FPS
     shadeRect(frame, { 0, 0, frame.cols, 40 });
     std::string ids;
-    for (const auto& [m, c] : cards) ids += (ids.empty() ? "" : ", ") + std::to_string(c->id);
-    std::string status = "Cards: " + std::to_string(cards.size()) + (ids.empty() ? "" : "  [ID " + ids + "]");
+    for (const auto& [m, c] : cards) ids += (ids.empty() ? "" : ", ") + std::to_string(m.id() + 1);
+    const std::string status = "Markers: " + (ids.empty() ? "none" : ids);
     cv::putText(frame, status, { 12, 27 }, FONT, 0.7, GREEN, 2, cv::LINE_AA);
     char buf[32];
     std::snprintf(buf, sizeof(buf), "Size %d%%", cvRound(scale * 100));   // 100% = 실제 크기
@@ -75,8 +77,19 @@ void UIManager::drawOverlayInfo(cv::Mat& frame,
     cv::putText(frame, buf, { frame.cols - 120, 27 }, FONT, 0.6, WHITE, 1, cv::LINE_AA);
 
     if (showInfo)
-        for (const auto& [m, c] : cards) drawLabel(frame, m, *c, c->id == selectedId);
+        for (const auto& [m, c] : cards) drawLabel(frame, m, c, m.id() == selectedId);
     if (showSpecs) drawSpecPanel(frame, cards);
+
+    // 하단 가구 선택 메뉴
+    shadeRect(frame, { 0, frame.rows - 65, frame.cols, 35 }, 0.7);
+    std::string menu = "Show a marker to the camera";
+    if (!cards.empty()) {
+        menu = "Marker " + std::to_string(selectedId + 1) + " >";
+        for (size_t i = 0; i < furniture.size(); ++i)
+            menu += "   [" + std::to_string(i + 1) + "] " + furniture[i].name;
+        menu += "   [0] Remove";
+    }
+    cv::putText(frame, menu, { 12, frame.rows - 41 }, FONT, 0.65, GREEN, 2, cv::LINE_AA);
 
     // 하단 도움말
     const std::string help = "[q] Quit  [c] Capture  [i] Labels  [s] Specs  [d] Debug  [+/-] Size  "
@@ -139,7 +152,9 @@ UIAction UIManager::pollKey(int delayMs) const {
     case 0x270000: return UIAction::RotateRight;
     case 0x280000: return UIAction::RotateDown;
     }
-    switch (k & 0xFF) {
+    const int key = k & 0xFF;
+    if (key >= '0' && key <= '9') return static_cast<UIAction>((int)UIAction::Furniture0 + key - '0');
+    switch (key) {
     case 'r': case 'R': return UIAction::ResetRotation;
     case 'f': case 'F': return UIAction::CalibrateFocal;
     case 'q': case 'Q': case 27: return UIAction::Quit;
