@@ -1,0 +1,7 @@
+.vs/
+x64/
+/ArUco car/
+*.user
+captures/
+backup_car/
+content/car_*.png
