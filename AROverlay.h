@@ -41,5 +41,5 @@ private:
     std::map<int, Pose> poses_;     // 마커 ID -> 부드럽게 다듬은 자세
     float scale_;
     float focalRatio_;
-    cv::Mat colorBuf_, depthBuf_;   // 프레임마다 다시 할당하지 않도록 보관
+    cv::Mat depthBuf_, idBuf_;   // 프레임마다 다시 할당하지 않도록 보관
 };

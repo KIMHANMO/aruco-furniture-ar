@@ -148,7 +148,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ARCardService.cpp" />
-    <ClCompile Include="AROverlay.cpp" />
+    <ClCompile Include="AROverlay.cpp">
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MaxSpeed</Optimization>
+      <BasicRuntimeChecks Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Default</BasicRuntimeChecks>
+      <DebugInformationFormat Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">ProgramDatabase</DebugInformationFormat>
+      <SupportJustMyCode Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</SupportJustMyCode>
+    </ClCompile>
     <ClCompile Include="CameraManager.cpp" />
     <ClCompile Include="ContentManager.cpp" />
     <ClCompile Include="main.cpp" />

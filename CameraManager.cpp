@@ -1,4 +1,6 @@
 #include "CameraManager.h"
+#include <opencv2/imgproc.hpp>
+#include <algorithm>
 #include <iostream>
 
 CameraManager::~CameraManager() { release(); }
@@ -15,6 +17,7 @@ bool CameraManager::open(int index, int width, int height) {
         std::cerr << "[CameraManager] Cannot open camera " << index << "\n";
         return false;
     }
+    maxSide_ = std::max(width, height);
     cap_.set(cv::CAP_PROP_FRAME_WIDTH, width);
     cap_.set(cv::CAP_PROP_FRAME_HEIGHT, height);
     std::cout << "[CameraManager] Camera " << index << " opened: "
@@ -24,7 +27,14 @@ bool CameraManager::open(int index, int width, int height) {
 
 bool CameraManager::read(cv::Mat& frame) {
     if (!cap_.isOpened()) return false;
-    return cap_.read(frame) && !frame.empty();
+    if (!cap_.read(frame) || frame.empty()) return false;
+    // 핸드폰 카메라는 요청을 무시하고 1080p/4K를 보내기도 해서, 느려지지 않게 줄인다
+    const int side = std::max(frame.cols, frame.rows);
+    if (side > maxSide_) {
+        const double k = (double)maxSide_ / side;
+        cv::resize(frame, frame, cv::Size(), k, k, cv::INTER_AREA);
+    }
+    return true;
 }
 
 void CameraManager::release() {

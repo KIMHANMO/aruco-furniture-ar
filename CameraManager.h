@@ -14,4 +14,5 @@ public:
 
 private:
     cv::VideoCapture cap_;
+    int maxSide_ = 1280;   // 이보다 큰 화면은 줄여서 처리
 };

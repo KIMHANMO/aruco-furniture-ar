@@ -1,10 +1,107 @@
 #include "AROverlay.h"
 #include <opencv2/calib3d.hpp>
-#include <opencv2/imgproc.hpp>
-#include <opencv2/ptcloud.hpp>
+#include <opencv2/core/utility.hpp>
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+
+namespace {
+const float NEAR_Z = 0.1f;   // 이보다 카메라에 가까운 부분은 자른다 (단위: 마커 한 변)
+
+struct Vertex { cv::Vec3f p; cv::Point2f uv; };
+
+// 화면에 투영된 삼각형. 화면 위 어디서든 a*x + b*y + c 로 값을 구한다
+struct Face {
+    cv::Vec3d edge[3];       // 세 값이 모두 0 이상이면 삼각형 안
+    cv::Vec3d invZ, uz, vz;  // 1/거리, 텍스처 좌표/거리
+    int x0, y0, x1, y1;      // 차지하는 픽셀 범위
+    cv::Vec3f color;         // 밝기를 곱한 색
+    float light;
+    const cv::Mat* texture;
+};
+
+// 카메라 앞쪽만 남기고 자른다. 남은 꼭짓점 수(0, 3, 4)를 돌려준다
+int clipNear(const Vertex in[3], Vertex out[4]) {
+    int n = 0;
+    for (int i = 0; i < 3; ++i) {
+        const Vertex& a = in[i];
+        const Vertex& b = in[(i + 1) % 3];
+        const bool aIn = a.p[2] >= NEAR_Z, bIn = b.p[2] >= NEAR_Z;
+        if (aIn) out[n++] = a;
+        if (aIn != bIn) {
+            const float t = (NEAR_Z - a.p[2]) / (b.p[2] - a.p[2]);
+            out[n++] = { a.p + (b.p - a.p) * t, a.uv + (b.uv - a.uv) * t };
+        }
+    }
+    return n;
+}
+
+// 화면 밖이거나 넓이가 없으면 false
+bool project(const Vertex& a, const Vertex& b, const Vertex& c, float focal, cv::Size size, Face& f) {
+    const Vertex* v[3] = { &a, &b, &c };
+    double x[3], y[3];
+    for (int i = 0; i < 3; ++i) {
+        x[i] = (double)focal * v[i]->p[0] / v[i]->p[2] + size.width / 2.0;
+        y[i] = (double)focal * v[i]->p[1] / v[i]->p[2] + size.height / 2.0;
+    }
+    double area = (x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0]);
+    if (!(std::abs(area) > 1e-9)) return false;
+    if (area < 0) {
+        std::swap(v[1], v[2]);
+        std::swap(x[1], x[2]);
+        std::swap(y[1], y[2]);
+        area = -area;
+    }
+    // 정수로 바꾸기 전에 화면 안으로 제한해야 아주 큰 값에서도 안전하다
+    auto pixel = [](double value, int limit) { return (int)std::floor(std::clamp(value, 0.0, (double)limit)); };
+    f.x0 = pixel(std::min({ x[0], x[1], x[2] }), size.width);
+    f.y0 = pixel(std::min({ y[0], y[1], y[2] }), size.height);
+    f.x1 = pixel(std::max({ x[0], x[1], x[2] }) + 1, size.width);
+    f.y1 = pixel(std::max({ y[0], y[1], y[2] }) + 1, size.height);
+    if (f.x0 >= f.x1 || f.y0 >= f.y1) return false;
+
+    for (int i = 0; i < 3; ++i) {
+        const int j = (i + 1) % 3;
+        f.edge[i] = { y[i] - y[j], x[j] - x[i], x[i] * y[j] - x[j] * y[i] };
+    }
+    auto plane = [&](double f0, double f1, double f2) {
+        const double ka = ((f1 - f0) * (y[2] - y[0]) - (f2 - f0) * (y[1] - y[0])) / area;
+        const double kb = ((f2 - f0) * (x[1] - x[0]) - (f1 - f0) * (x[2] - x[0])) / area;
+        return cv::Vec3d(ka, kb, f0 - ka * x[0] - kb * y[0]);
+    };
+    const double w[3] = { 1.0 / v[0]->p[2], 1.0 / v[1]->p[2], 1.0 / v[2]->p[2] };
+    f.invZ = plane(w[0], w[1], w[2]);
+    if (f.texture) {
+        f.uz = plane(v[0]->uv.x * w[0], v[1]->uv.x * w[1], v[2]->uv.x * w[2]);
+        f.vz = plane(v[0]->uv.y * w[0], v[1]->uv.y * w[1], v[2]->uv.y * w[2]);
+    }
+    return true;
+}
+
+// y번째 줄에서 이 삼각형이 덮는 픽셀 중 지금까지보다 가까운 곳에 번호를 적는다
+void rasterRow(const Face& f, int id, int y, float* depth, int* ids) {
+    const double yc = y + 0.5;
+    double lo = f.x0, hi = f.x1;   // lo <= x < hi
+    for (const auto& e : f.edge) {
+        const double rest = e[1] * yc + e[2];
+        if (e[0] > 0) lo = std::max(lo, std::ceil(-rest / e[0] - 0.5));
+        else if (e[0] < 0) hi = std::min(hi, std::floor(-rest / e[0] - 0.5) + 1);
+        else if (rest < 0) return;
+    }
+    if (!(lo < hi)) return;
+    const int end = (int)hi;
+    const float step = (float)f.invZ[0];
+    int x = (int)lo;
+    const float first = (float)(f.invZ[0] * (x + 0.5) + f.invZ[1] * yc + f.invZ[2]);
+    for (int i = 0; x + i < end; ++i) {
+        const float w = first + step * i;
+        if (w > depth[x + i]) {
+            depth[x + i] = w;
+            ids[x + i] = id;
+        }
+    }
+}
+} // namespace
 
 AROverlay::AROverlay(float scale, float focalRatio) : scale_(scale), focalRatio_(focalRatio) {}
 
@@ -59,14 +156,10 @@ void AROverlay::draw(cv::Mat& frame, const std::vector<Item>& items) {
     const float focal = focalRatio_ * frame.cols;
     const cv::Matx33d K(focal, 0, frame.cols / 2.0, 0, focal, frame.rows / 2.0, 0, 0, 1);
 
-    // 1) 모든 모델의 꼭짓점을 카메라 기준 좌표로 옮긴다
-    struct Paint { cv::Vec3f color; float light; const cv::Mat* texture; };
-    std::vector<cv::Vec3f> vertices, attributes;   // attributes = (u, v, 삼각형 번호)
-    std::vector<cv::Vec3i> indices;
-    std::vector<Paint> paints;
-    const float zNear = 0.1f, zFar = 1000.f;       // 단위: 마커 한 변
-    cv::Point2f lo((float)frame.cols, (float)frame.rows), hi(0.f, 0.f);   // 가구가 차지하는 화면 영역
-    const cv::Vec3f lightDir = cv::normalize(cv::Vec3f(0.4f, 0.8f, 0.6f));   // 오른쪽 위, 카메라 쪽
+    // 1) 모든 삼각형을 화면에 투영한다 (CPU 코어 수만큼 나눠서)
+    const int parts = std::max(1, cv::getNumThreads());
+    std::vector<std::vector<Face>> projected;
+    const cv::Vec3f lightDir = cv::normalize(cv::Vec3f(0.4f, -0.8f, -0.6f));   // 오른쪽 위, 카메라 쪽
 
     for (const auto& item : items) {
         if (!item.mesh || !updatePose(item.marker, K)) continue;
@@ -82,81 +175,88 @@ void AROverlay::draw(cv::Mat& frame, const std::vector<Item>& items) {
         const cv::Vec3f pivot(0.f, 0.f, item.mesh->size.z / 2 * scale);
         const cv::Vec3f T = cv::Matx33f(markerR) * pivot + cv::Vec3f(tvec);
 
-        for (const auto& t : item.mesh->triangles) {
-            cv::Vec3f cam[3];
-            for (int k = 0; k < 3; ++k) {
-                const cv::Vec3f p = R * (cv::Vec3f(t.v[k]) * scale - pivot) + T;
-                cam[k] = { p[0], -p[1], -p[2] };   // triangleRasterize는 y=위, z=카메라 쪽
-                if (p[2] < zNear) {             // 카메라 뒤로 넘어가면 영역을 계산할 수 없어 전체 화면을 그린다
-                    lo = { 0.f, 0.f };
-                    hi = { (float)frame.cols, (float)frame.rows };
-                } else {
-                    const float x = focal * p[0] / p[2] + frame.cols / 2.f, y = focal * p[1] / p[2] + frame.rows / 2.f;
-                    lo = { std::min(lo.x, x), std::min(lo.y, y) };
-                    hi = { std::max(hi.x, x), std::max(hi.y, y) };
+        const size_t firstPart = projected.size();
+        projected.resize(firstPart + parts);
+        const auto& triangles = item.mesh->triangles;
+        cv::parallel_for_(cv::Range(0, parts), [&](const cv::Range& range) {
+            for (int part = range.start; part < range.end; ++part) {
+                std::vector<Face>& faces = projected[firstPart + part];
+                const size_t begin = triangles.size() * part / parts, end = triangles.size() * (part + 1) / parts;
+                for (size_t i = begin; i < end; ++i) {
+                    const Triangle& t = triangles[i];
+                    Vertex v[3];
+                    for (int k = 0; k < 3; ++k)
+                        v[k] = { R * (cv::Vec3f(t.v[k]) * scale - pivot) + T, t.uv[k] };
+                    Vertex clipped[4];
+                    const int n = clipNear(v, clipped);
+                    if (n < 3) continue;
+
+                    const cv::Vec3f normal = (v[1].p - v[0].p).cross(v[2].p - v[0].p);
+                    const float len = (float)cv::norm(normal);
+                    // 외부 모델은 면의 앞뒤가 뒤섞인 경우가 많아, 항상 카메라를 향한 쪽을 앞면으로 본다
+                    float lit = len > 0 ? normal.dot(lightDir) / len : 0.f;
+                    if (normal.dot(v[0].p) > 0) lit = -lit;
+
+                    Face f;
+                    f.light = 0.6f + 0.4f * std::max(0.f, lit);
+                    f.color = t.color * f.light;
+                    f.texture = t.texture < 0 ? nullptr : &item.mesh->textures[t.texture];
+                    for (int k = 2; k < n; ++k)
+                        if (project(clipped[0], clipped[k - 1], clipped[k], focal, frame.size(), f)) faces.push_back(f);
                 }
             }
-            const cv::Vec3f n = (cam[1] - cam[0]).cross(cam[2] - cam[0]);
-            const float len = (float)cv::norm(n);
-            // 외부 모델은 면의 앞뒤가 뒤섞인 경우가 많아, 항상 카메라를 향한 쪽을 앞면으로 본다
-            float lit = len > 0 ? n.dot(lightDir) / len : 0.f;
-            if (n.dot(cam[0]) > 0) lit = -lit;
+        });
+    }
 
-            const int base = (int)vertices.size();
-            const float id = (float)paints.size();
-            for (int k = 0; k < 3; ++k) {
-                vertices.push_back(cam[k]);
-                attributes.push_back({ t.uv[k].x, t.uv[k].y, id });
-            }
-            indices.push_back({ base, base + 1, base + 2 });
-            paints.push_back({ t.color, 0.6f + 0.4f * std::max(0.f, lit),
-                               t.texture < 0 ? nullptr : &item.mesh->textures[t.texture] });
+    // 2) 화면을 가로 띠로 나누고, 띠마다 걸치는 삼각형을 모은다
+    const int bandRows = 16, bandCount = (frame.rows + bandRows - 1) / bandRows;
+    std::vector<const Face*> faces;
+    std::vector<std::vector<int>> bands(bandCount);
+    for (const auto& part : projected)
+        for (const auto& f : part) {
+            for (int b = f.y0 / bandRows; b <= (f.y1 - 1) / bandRows; ++b) bands[b].push_back((int)faces.size());
+            faces.push_back(&f);
         }
-    }
-    if (indices.empty()) return;
 
-    // 프레임 전체가 아닌, 가구가 차지하는 영역(ROI)만 그려서 속도 향상
-    lo = { std::max(lo.x, 0.f), std::max(lo.y, 0.f) };
-    hi = { std::min(hi.x, (float)frame.cols), std::min(hi.y, (float)frame.rows) };
-    if (hi.x <= lo.x || hi.y <= lo.y) return;
-    const cv::Rect roi = cv::Rect(cv::Point(cvFloor(lo.x), cvFloor(lo.y)), cv::Point(cvCeil(hi.x), cvCeil(hi.y)));
-    // shortcut: 가구가 화면을 크게 덮으면 반 해상도로 칠해 테두리가 2px 단위, 더 매끈해야 하면 GPU(OpenGL)로 교체
-    const int step = roi.area() > 200000 ? 2 : 1;
-    const cv::Size buf((roi.width + step - 1) / step, (roi.height + step - 1) / step);
-    // triangleRasterize는 화면 중심을 광축으로 보므로, ROI 중심이 광축에 오도록 장면을 민다
-    const float shiftX = (roi.x + buf.width * step / 2.f - frame.cols / 2.f) / focal;
-    const float shiftY = (roi.y + buf.height * step / 2.f - frame.rows / 2.f) / focal;
-    for (auto& p : vertices) {
-        p[0] += shiftX * p[2];
-        p[1] -= shiftY * p[2];
-    }
-
-    // 2) 픽셀마다 가장 가까운 삼각형을 찾는다
-    colorBuf_.create(buf, CV_32FC3);
-    depthBuf_.create(buf, CV_32F);
-    colorBuf_.setTo(cv::Scalar(0, 0, -1));
-    depthBuf_.setTo(zFar);
-    cv::triangleRasterize(vertices, indices, attributes, colorBuf_, depthBuf_, cv::Matx44f::eye(),
-                          2 * std::atan(buf.height * step / (2.0 * focal)), zNear, zFar,
-                          cv::TriangleRasterizeSettings().setCullingMode(cv::RASTERIZE_CULLING_NONE));
-
-    // 3) 찾은 삼각형의 색(또는 텍스처)에 밝기를 곱해 칠한다
-    cv::Mat target = frame(roi);
-    for (int y = 0; y < roi.height; ++y) {
-        const cv::Vec3f* hit = colorBuf_.ptr<cv::Vec3f>(y / step);
-        cv::Vec3b* out = target.ptr<cv::Vec3b>(y);
-        for (int x = 0; x < roi.width; ++x) {
-            const cv::Vec3f& h = hit[x / step];
-            if (h[2] < 0) continue;
-            const Paint& paint = paints[std::min(cvRound(h[2]), (int)paints.size() - 1)];
-            cv::Vec3f color = paint.color;
-            if (const cv::Mat* tex = paint.texture) {
-                const float u = h[0] - std::floor(h[0]);   // 1을 넘으면 무늬 반복
-                const float v = h[1] - std::floor(h[1]);
-                color = tex->at<cv::Vec3b>(std::min((int)(v * tex->rows), tex->rows - 1),
-                                           std::min((int)(u * tex->cols), tex->cols - 1));
+    // 3) 띠마다 픽셀별로 가장 가까운 삼각형을 찾고, 그 색(또는 텍스처)을 칠한다
+    depthBuf_.create(frame.size(), CV_32F);
+    idBuf_.create(frame.size(), CV_32S);
+    cv::parallel_for_(cv::Range(0, bandCount), [&](const cv::Range& range) {
+        for (int b = range.start; b < range.end; ++b) {
+            if (bands[b].empty()) continue;
+            const int top = b * bandRows, bottom = std::min(top + bandRows, frame.rows);
+            for (int y = top; y < bottom; ++y) {
+                std::fill_n(depthBuf_.ptr<float>(y), frame.cols, 0.f);   // 1/거리: 0 = 아주 멂
+                std::fill_n(idBuf_.ptr<int>(y), frame.cols, -1);
             }
-            for (int c = 0; c < 3; ++c) out[x][c] = cv::saturate_cast<uchar>(color[c] * paint.light);
+            for (int id : bands[b]) {
+                const Face& f = *faces[id];
+                const int y1 = std::min(f.y1, bottom);
+                for (int y = std::max(f.y0, top); y < y1; ++y)
+                    rasterRow(f, id, y, depthBuf_.ptr<float>(y), idBuf_.ptr<int>(y));
+            }
+            for (int y = top; y < bottom; ++y) {
+                const int* ids = idBuf_.ptr<int>(y);
+                const float* depth = depthBuf_.ptr<float>(y);
+                cv::Vec3b* out = frame.ptr<cv::Vec3b>(y);
+                for (int x = 0; x < frame.cols; ++x) {
+                    if (ids[x] < 0) continue;
+                    const Face& f = *faces[ids[x]];
+                    cv::Vec3f color = f.color;
+                    if (f.texture) {
+                        const double z = 1.0 / depth[x], xc = x + 0.5, yc = y + 0.5;
+                        double u = (f.uz[0] * xc + f.uz[1] * yc + f.uz[2]) * z;
+                        double v = (f.vz[0] * xc + f.vz[1] * yc + f.vz[2]) * z;
+                        u -= std::floor(u);   // 1을 넘으면 무늬 반복
+                        v -= std::floor(v);
+                        const cv::Vec3b& c = f.texture->at<cv::Vec3b>(
+                            std::min((int)(v * f.texture->rows), f.texture->rows - 1),
+                            std::min((int)(u * f.texture->cols), f.texture->cols - 1));
+                        color = cv::Vec3f(c[0] * f.light, c[1] * f.light, c[2] * f.light);
+                    }
+                    for (int c = 0; c < 3; ++c) out[x][c] = cv::saturate_cast<uchar>(color[c]);
+                }
+            }
         }
-    }
+    });
 }
