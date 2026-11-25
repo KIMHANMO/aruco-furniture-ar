@@ -16,8 +16,8 @@
 ## 코드를 고쳐서 빌드하기
 
 1. Visual Studio 2026에 'C++를 사용한 데스크톱 개발'(v145 도구)을 설치해요.
-2. OpenCV **5.0.0** Windows용을 `C:\opencv`에 풀어요. `C:\opencvuild\include` 폴더가 보이면 맞아요.
-3. 환경 변수 PATH에 `C:\opencvuilddc16in`을 추가하고 Visual Studio를 다시 켜요.
+2. OpenCV **5.0.0** Windows용을 `C:\opencv`에 풀어요. `C:\opencv\build\include` 폴더가 보이면 맞아요.
+3. 환경 변수 PATH에 `C:\opencv\build\x64\vc16\bin`을 추가하고 Visual Studio를 다시 켜요.
 4. `ArUco car.slnx`를 열고 **Release / x64**로 빌드해요.
 
 ## 무엇이 달라졌나요?
